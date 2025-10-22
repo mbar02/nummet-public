@@ -1,0 +1,17 @@
+*.swp
+*.DS_Store
+*.out
+*.exe
+*.csv
+*.o
+*/build/*
+!*/build/Makefile
+*/analysis/*
+*/analysis/saved_data/
+!*/analysis/*.py
+!*/analysis/*.jl
+!*/analysis/*.sh
+!*/analysis/*.txt
+*/performanceTests/*.svg
+*/__pycache__/*
+*.pyc
