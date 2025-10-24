@@ -65,17 +65,56 @@ def energy(gg,n):
 
 maxn = 4
 
-def gevpsigma(eigval, noObs, k, eigvec, cov_mat):
+def jackknife(noObs, noLags, obs_idx, reduced_lags, correlators, data, powMeans, th_energies):
+  mockPow      = np.zeros(noObs)
+  mockCorr     = np.zeros(correlators.shape)
+  nrows        = data.shape[0]
+  crossProd    = np.zeros(correlators.shape)
+  for k in range(2):
+    crossProd[k,:,:]  = correlators[k,:,:] + np.outer(powMeans,powMeans)
+  mockEnergies = []
+  mockLamdas   = []
+
+  for jackRow in range(nrows):
+    mockPow = [(nrows*powMeans[i] - data[jackRow, i])/(nrows-1) for i in range(noObs)]
+    for k in range(noLags):
+      counter = 0
+      for i in range(noObs):
+        for j in range(i, noObs):
+          mockCorr[k,j,i] = mockCorr[k,i,j] = (nrows*crossProd[k,i,j] - data[jackRow,obs_idx[k][counter]-1])/(nrows-1) - mockPow[i]*mockPow[j]
+          counter += 1
+
+    for k in range(noLags-1):
+      tau      = reduced_lags[k]
+      lam, _   = eigh(mockCorr[1+k], mockCorr[0],driver="gvx",check_finite=False)
+      order    = np.argsort(-lam)
+      lam      = lam[order]
+      gaps     = - np.log(abs(lam))/tau
+    mockEnergies.append(gaps)
+    mockLamdas.append(lam)
+  
+  mockEnergies = np.vstack(mockEnergies)
+  mockLamdas   = np.vstack(mockLamdas)
+  gaps         = [np.nanmean(mockEnergies[:,i]) for i in range(noObs)]
+  sigma_gaps   = [np.sqrt(len(mockLamdas[:,i]) * np.nanvar(mockEnergies[:,i], ddof=1)) for i in range(noObs)]
+  lambdas      = [np.nanmean(mockLamdas[:,i]) for i in range(noObs)]
+  sigma_lambdas= [np.sqrt(len(mockLamdas[:,i]) * np.nanvar(mockLamdas[:,i])) for i in range(noObs)]
+  sigma_E_sys  = [np.exp( - tau * (th_energies[-1] - th_energies[i]) ) / tau for i in range(noObs)]
+
+  return gaps, sigma_gaps, sigma_E_sys, sigma_lambdas
+
+def gevpsigma(eigval, noObs, k, eigvec, cov_mat, norm):
   sigma2 = 0
   for t1 in range(2):
-    tmp1 = (-eigval if t1==0 else 1)
+    tmp1 = (-np.abs(eigval) if t1==0 else 1)
     for t2 in range(2):
-      tmp2 = (-eigval if t2==0 else 1)
+      tmp2 = (-np.abs(eigval) if t2==0 else 1)
       for i1 in range(noObs):
         for j1 in range(noObs):
           for i2 in range(noObs):
             for j2 in range(noObs):
-              sigma2 += cov_mat[t1*(1+k),t2*(1+k),i1,j1,i2,j2]*tmp1*tmp2*eigvec[i1]*eigvec[j1]*eigvec[i2]*eigvec[j2]
+              sigma2 += cov_mat[t1*(1+k),t2*(1+k),i1,j1,i2,j2]*tmp1*tmp2*eigvec[i1]*eigvec[j1]*eigvec[i2]*eigvec[j2] / \
+                ( eigvec @ norm @ eigvec ) ** 2
   return sigma2
 
 def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
@@ -113,19 +152,7 @@ def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
 
     order       = np.argsort(-lam)
     lam         = lam[order]
-    #DEBUG
-    print("\n")
-    print(lam)
-    deb_sigma = []
-    for idx in range(len(lam)):
-      eigval = lam[idx]
-      eigvec = eig[:,idx]
 
-      sigma2 = gevpsigma(eigval, noObs, k, eigvec, cov_mat)
-
-      deb_sigma.append(float(np.sqrt(sigma2)))
-    print(deb_sigma)
-    #END DEBUG
     eig         = eig[:,order]
     energy      = - np.log(np.abs(lam))/tau
     #energy      = - np.log(lam)/tau
@@ -137,13 +164,15 @@ def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
       eigval = lam[idx]
       eigvec = eig[:,idx]
 
-      sigma2 = gevpsigma(eigval, noObs, k, eigvec, cov_mat)
+      sigma2 = gevpsigma(eigval, noObs, k, eigvec, cov_mat, raw_corr[0])
       
       sigma_lam[k,idx]    = np.sqrt(sigma2)
       sigma_E[k,idx]      = abs(np.sqrt(sigma2)/(tau*eigval))
       sigma_E_sys[k, idx] = np.exp( - tau * (th_energies[-1] - th_energies[idx]) ) / tau
   
-  return energy_mat, sigma_E, sigma_E_sys
+  return energy_mat, sigma_E, sigma_E_sys, sigma_lam
+
+
 
 procfile_semaphore_counter = asyncio.Semaphore( 4 )
 procfile_semaphore_update  = asyncio.Semaphore( 1 )
@@ -228,45 +257,51 @@ async def process_file(descriptor,labels,obs_idx, noLags, MAX_X_POW, plot_dir):
 
   await procfile_semaphore_update.acquire()
 
+  # Solve GEVP and find gaps
   try:
-    # Solve GEVP and find gaps
     reduced_lags    = lags[1:] - lags[0]
-    gaps,sigma_gaps,syssigma_gaps = gevp(
+    jgaps, jsigma_gaps,jsysSigma,jsigma_lam = jackknife(
+      noObs,noLags,obs_idx,reduced_lags,corr,blockedMeasures,powMeans,
+      [energy([g],n)[0] for n in range(noObs + 2)])
+    gaps,sigma_gaps,syssigma_gaps, sigma_lam = gevp(
       noObs, noLags, reduced_lags, corr, cov,
       [ energy( [g], n )[0] for n in range(noObs+2) ]
     )
-
-    # print("alg, g, beta, n")
-    # print( alg, g, beta, path_size )
-    # print(gaps)
-    # print("\n")
-
     bestGaps     = np.array([gaps[np.nanargmin([(sigma_gaps/gaps)[:,col]]),col] for col in range(MAX_X_POW)])
     bestSigma    = np.array([sigma_gaps[np.nanargmin([(sigma_gaps/gaps)[:,col]]),col] for col in range(MAX_X_POW)])
     bestSysSigma = np.array([syssigma_gaps[np.nanargmin([(sigma_gaps/gaps)[:,col]]),col] for col in range(MAX_X_POW)])
+    bestSigmaLam = np.array([sigma_lam[np.nanargmin([(sigma_gaps/gaps)[:,col]]),col] for col in range(MAX_X_POW)])
+    
     order        = np.argsort(bestGaps)
     bestGaps     = bestGaps[order]
     bestSigma    = bestSigma[order]
     bestSysSigma = bestSysSigma[order]
+    bestSigmaLam = bestSigmaLam[order]
 
-  except Exception as e:
+    
+  except Exception as e: 
     print("alg, g, beta, n")
     print( alg, g, beta, path_size)
     print("Something wrong happened")
     print("\n")
     print(e)
-    
   else:
+    print("jgaps, bestGaps, jsigma_gaps, J/HF ratio")
+    print(jgaps)
     print(bestGaps)
-    print(bestSigma)
+    print(jsigma_gaps)
+    print(jsigma_gaps/bestSigma)
+    print(jsigma_lam/sigma_lam)
 
+    # print(jgaps)
+    # print(jsigma_gaps)
     data.append({
       'algorithm'    : alg,
       'coupling'     : g,
       'step'         : beta/path_size,
-      'gaps'         : bestGaps,
-      'sigma_gaps'   : bestSigma,
-      'syssigma_gaps': bestSysSigma,
+      'gaps'         : jgaps,
+      'sigma_gaps'   : jsigma_gaps,
+      'syssigma_gaps': jsysSigma,
     })
     
     
@@ -288,7 +323,7 @@ async def main():
 
   args = parser.parse_args()
 
-  plot_dir    = Path( args.plotDir    )
+  plot_dir    = Path( args.plotDir   )
 
   # Create output folder
   os.makedirs(plot_dir, exist_ok=True)
@@ -354,7 +389,7 @@ async def main():
         plt.xlabel("$a$")
         plt.ylabel(r"$\Delta E$")
         plt.legend()
-        plt.savefig(plot_dir / f"scaling_{algorithm}_{int(g*1000):06d}.svg")
+        plt.savefig(plot_dir / f"jackknife_scaling_{algorithm}_{int(g*1000):06d}.svg")
         plt.clf()
 
       scaled_gaps.append(tmp)
@@ -384,7 +419,7 @@ async def main():
     plt.xscale('log')
     plt.ylim([-0.89*rmFree+0.9,-1*rmFree+33])
     plt.legend()
-    plt.savefig(plot_dir / f"gaps_coupling_{algorithm}.svg")
+    plt.savefig(plot_dir / f"JackKnife_gaps_coupling_{algorithm}.svg")
     plt.clf()
 
 if __name__ == "__main__":

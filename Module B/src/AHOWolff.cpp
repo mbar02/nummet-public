@@ -253,7 +253,7 @@ int main(int argc, char** argv) {
     path[i] = 0.0;
 
   // Annex parameter
-  double gamma = 2.0 / sqrt((double)n);
+  double gamma = 1.0 / sqrt((double)n);
 
   // Progress bar
   asyncProgressBar pb(samples, columns);

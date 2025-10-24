@@ -51,8 +51,8 @@ def config():
     'TEMPERAT_SIM'   : lambda n, g:            [ betaontau(g, maxn) * tau(g, maxn) ],
     'LAGS_SIM'       : lambda n, beta, g:      [ int( i * n/betaontau(g, maxn) ) for i in [1,2] ],
     'PATH_SIZE'      : lambda g:               np.array( np.array(steps) * betaontau(g, maxn), dtype=int ).tolist(),
-    'COUPLING_CONST' : (np.logspace(-2,2,20).tolist())[0:7],
-    'OUTPUT_DIR'     : '/home/contazzi/local/final-aho-low-g',
+    'COUPLING_CONST' : (np.logspace(-2,2,20).tolist()),
+    'OUTPUT_DIR'     : '/home/contazzi/local/final-aho-low-g-2',
 
     'MAX_PARAL_JOBS'     : 12-max_gpu_processes,
     'MAX_PARAL_JOBS_GPU' : max_gpu_processes,
