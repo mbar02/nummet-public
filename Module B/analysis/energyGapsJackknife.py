@@ -1,38 +1,13 @@
-import os
-import sys
-
 import numpy  as np
 import cmath
-from matplotlib        import pyplot    as plt
-from matplotlib        import colormaps as cmap
-from scipy.optimize    import curve_fit
 from scipy.linalg      import eigh
 import pandas as pd
 
 import json
 from pathlib import Path
 import argparse
-import multiprocessing
 
 from tqdm import tqdm
-
-import asyncio
-
-plt.rcParams.update({
-    "font.size": 10,
-    "font.family": "Times New Roman",
-    "axes.titlesize": 10,
-    "axes.labelsize": 8,
-    "figure.dpi": 500,
-    "figure.figsize": (4.3,3.5),
-    "legend.labelspacing": 0.1,
-    "legend.handletextpad": 0.2,
-    "legend.borderpad": 0.2,
-    "text.usetex": True,
-    "text.latex.preamble": r"\usepackage{babel}[italian]",
-    "lines.linewidth": 0.25,
-    "lines.markersize": 1
-})
 
 eta = 0.9e-1
 
@@ -106,15 +81,15 @@ def jackknife(noObs, noLags, obs_idx, reduced_lags, correlators, data, powMeans,
 def gevpsigma(eigval, noObs, k, eigvec, cov_mat, norm):
   sigma2 = 0
   for t1 in range(2):
-    tmp1 = (-np.abs(eigval) if t1==0 else 1)
+    tmp1 = (-eigval if t1==0 else 1)
     for t2 in range(2):
-      tmp2 = (-np.abs(eigval) if t2==0 else 1)
+      tmp2 = (-eigval if t2==0 else 1)
       for i1 in range(noObs):
         for j1 in range(noObs):
           for i2 in range(noObs):
             for j2 in range(noObs):
-              sigma2 += cov_mat[t1*(1+k),t2*(1+k),i1,j1,i2,j2]*tmp1*tmp2*eigvec[i1]*eigvec[j1]*eigvec[i2]*eigvec[j2] / \
-                ( eigvec @ norm @ eigvec ) ** 2
+              sigma2 += cov_mat[t1*(1+k),t2*(1+k),i1,j1,i2,j2]*tmp1*tmp2*eigvec[i1]*eigvec[j1]*eigvec[i2]*eigvec[j2] #/ \
+              #  ( eigvec @ norm @ eigvec ) ** 2
   return sigma2
 
 def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
@@ -124,16 +99,6 @@ def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
   sigma_lam   = np.zeros(data_shape)
   sigma_E     = np.zeros(data_shape)
   sigma_E_sys = np.zeros(data_shape)
-
-  # for k in range(noLags):
-  #   negval = False
-  #   for i in range(noObs):
-  #     for j in range(noObs):
-  #       if correlators[k,i,j] < 0:
-  #         correlators[k,i,j] = 0
-  #         negval = True
-  #   if negval:
-  #     print(correlators[k])
 
   raw_corr = []
 
@@ -155,7 +120,6 @@ def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
 
     eig         = eig[:,order]
     energy      = - np.log(np.abs(lam))/tau
-    #energy      = - np.log(lam)/tau
 
     lambda_mat[k] = lam
     energy_mat[k] = energy
@@ -172,12 +136,7 @@ def gevp(noObs, noLags, reduced_lags, correlators, cov_mat, th_energies):
   
   return energy_mat, sigma_E, sigma_E_sys, sigma_lam
 
-
-
-procfile_semaphore_counter = asyncio.Semaphore( 4 )
-procfile_semaphore_update  = asyncio.Semaphore( 1 )
-
-async def process_file(descriptor,labels,obs_idx, noLags, MAX_X_POW, plot_dir):
+def process_file(descriptor,labels,obs_idx, noLags, MAX_X_POW):
   sim_data  = json.load(open(descriptor,'r'))
   alg       = sim_data['algorithm']           # algorithm use
   g         = sim_data['coupling']            # perturbation .25*g*q^4 parameter
@@ -255,8 +214,6 @@ async def process_file(descriptor,labels,obs_idx, noLags, MAX_X_POW, plot_dir):
               counter2 += 1
           counter1 += 1
 
-  await procfile_semaphore_update.acquire()
-
   # Solve GEVP and find gaps
   try:
     reduced_lags    = lags[1:] - lags[0]
@@ -278,55 +235,26 @@ async def process_file(descriptor,labels,obs_idx, noLags, MAX_X_POW, plot_dir):
     bestSysSigma = bestSysSigma[order]
     bestSigmaLam = bestSigmaLam[order]
 
-    
   except Exception as e: 
     print("alg, g, beta, n")
     print( alg, g, beta, path_size)
     print("Something wrong happened")
-    print("\n")
     print(e)
+    print("\n")
   else:
-    print("jgaps, bestGaps, jsigma_gaps, J/HF ratio")
-    print(jgaps)
-    print(bestGaps)
-    print(jsigma_gaps)
-    print(jsigma_gaps/bestSigma)
-    print(jsigma_lam/sigma_lam)
+    print("alg, g, beta, n")
+    print( alg, g, beta, path_size)
+    print("jackknife sigmas:        ", *(np.array(jsigma_gaps).flatten()) )
+    print("hellmann-feynman sigmas: ", *(bestSigma.flatten()            ) )
+    print("ratio: ", *((jsigma_gaps/bestSigma).flatten()                ) )
+    print("\n")
 
-    # print(jgaps)
-    # print(jsigma_gaps)
-    data.append({
-      'algorithm'    : alg,
-      'coupling'     : g,
-      'step'         : beta/path_size,
-      'gaps'         : jgaps,
-      'sigma_gaps'   : jsigma_gaps,
-      'syssigma_gaps': jsysSigma,
-    })
-    
-    
-    # for i in range(MAX_X_POW):
-    #   plt.errorbar(reduced_lags, gaps[:,i], sigma_gaps[:,i], label=f"$\\Delta E_{i}$")
-    # plt.xlabel(r"$\tau$")
-    # plt.ylabel(r"$\Delta E$")
-    # plt.legend()
-    # plt.savefig(plot_dir / f"gaps_{alg}_{int(1000*g):06d}.svg")
-    # plt.clf()
-  
-  procfile_semaphore_update.release()
-
-async def main():
+def main():
   # parse arguments from command line
   parser = argparse.ArgumentParser( description="It does the final fit." )
-  parser.add_argument( "--plotDir"   ,   type=str, help="Output plot directory.", required=True )
   parser.add_argument( "input"       ,   type=str, help="JSON descriptors of the simulation.", nargs='+' )
 
   args = parser.parse_args()
-
-  plot_dir    = Path( args.plotDir   )
-
-  # Create output folder
-  os.makedirs(plot_dir, exist_ok=True)
 
   # read input files
   files = args.input
@@ -346,81 +274,7 @@ async def main():
         obs_idx[k].append(counter)
         counter +=1
   for f in tqdm(files):
-    await procfile_semaphore_counter.acquire()
-    await process_file(f,labels,obs_idx,noLags,MAX_X_POW,plot_dir)
-    procfile_semaphore_counter.release()
-
-  for algorithm in set( d['algorithm'] for d in data ):
-    data_alg      = [d for d in data if d['algorithm'] == algorithm]
-    gg            = []
-    scaled_gaps   = []
-    scaled_sigma  = []
-    for g in set(( d['coupling'] for d in data_alg)):
-      data_alg_g = [d for d in data_alg if d['coupling'] == g ]
-      gg.append(g)
-      aa     = []
-      EE     = []
-      sigEE  = []
-      ssigEE = []
-      for d in data_alg_g:
-        aa.append(d['step'])
-        EE.append(d['gaps'])
-        sigEE.append(d['sigma_gaps'])
-        ssigEE.append(d['syssigma_gaps'])
-
-      aa        = np.array(aa)
-      EE        = np.array(EE)
-      sigEE     = np.array(sigEE)
-      ssigEE    = np.array(ssigEE)
-      tmp       = []
-      sigma_tmp = []
-      xx = np.logspace(np.log10(min(aa)*0.9), np.log10(max(aa)*1.1),100)
-      if len(aa) == 1:
-        tmp = EE[0]
-        sigma_tmp = sigEE[0] + ssigEE[0]
-        
-      elif len(aa) > 1:
-        for i in range(MAX_X_POW):
-          popt, pcov = curve_fit(parabola,aa,EE[:,i],sigma=sigEE[:,i],p0=[1,EE[0,i]], absolute_sigma=True)
-          tmp.append(popt[1])
-          sigma_tmp.append(np.abs(np.sqrt(pcov[1,1])+np.mean(ssigEE)))
-          plt.errorbar(aa, EE[:,i],sigEE[:,i],fmt='x', label=f"$\\Delta E_{i+1}$")
-          plt.plot(xx, parabola(xx,*popt),'--')
-        plt.xlabel("$a$")
-        plt.ylabel(r"$\Delta E$")
-        plt.legend()
-        plt.savefig(plot_dir / f"jackknife_scaling_{algorithm}_{int(g*1000):06d}.svg")
-        plt.clf()
-
-      scaled_gaps.append(tmp)
-      scaled_sigma.append(sigma_tmp)
-    order        = np.argsort(gg)
-    gg           = np.array(gg) [order]
-    scaled_gaps  = np.array(scaled_gaps) [order]
-    scaled_sigma = np.array(scaled_sigma) [order]
-
-    xx = np.logspace(np.log10(gg[0]*0.9),np.log10(gg[-1]*1.1),100)
-    E0_pv = energy(xx,0)
-
-    colmap = cmap['winter']
-
-    rmFree = 0
-
-    for i in range(MAX_X_POW):
-      plt.errorbar(
-        gg * (1 + 0.0 * (i-MAX_X_POW/2)/MAX_X_POW), scaled_gaps[:,i]-rmFree*(i+1),
-        scaled_sigma[:,i],
-        label = f"$\\Delta E_{i+1}$", fmt=".", color=colmap( i/MAX_X_POW )
-      )
-      plt.plot(xx,energy(xx,i+1)-E0_pv-rmFree*(i+1),'--', color=colmap( i/MAX_X_POW ))
-    plt.xlabel(r"$g$")
-    plt.ylabel(r"$\Delta E_n$" if rmFree == 0 else r"$\Delta E_n - \Delta E_n^{\text{(free)}}$")
-    plt.yscale('log')
-    plt.xscale('log')
-    plt.ylim([-0.89*rmFree+0.9,-1*rmFree+33])
-    plt.legend()
-    plt.savefig(plot_dir / f"JackKnife_gaps_coupling_{algorithm}.svg")
-    plt.clf()
+    process_file(f,labels,obs_idx,noLags,MAX_X_POW)
 
 if __name__ == "__main__":
-  asyncio.run(main())
+  main()
