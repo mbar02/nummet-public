@@ -15,7 +15,6 @@ plt.rcParams.update({
     "legend.handletextpad": 0.2,
     "legend.borderpad": 0.2,
     "text.usetex": True,
-    "text.latex.preamble": r"\usepackage\{babel}[italian]",
 })
 colmap = cmap['winter']
 
@@ -32,7 +31,7 @@ p_multi = [float(m.group(1)) for m in re_multi.finditer(text)]
 out1 = Path(".//hist_pvals_metropolis_vs_wolff.svg")
 
 plt.figure(figsize=(5,3.5), dpi=150)
-plt.hist(p_wolff, bins=100, range=(0,1), density=True)
+plt.hist(p_wolff, bins=50, range=(0,1), density=True)
 plt.plot
 plt.xlabel("p-value")
 plt.ylabel("Frequency")
@@ -43,7 +42,7 @@ plt.savefig(out1)
 
 out2 = Path("./hist_pvals_metropolis_vs_multicluster.svg")
 plt.figure(figsize=(5,3.5), dpi=150)
-plt.hist(p_multi, bins=100, range=(0,1),density=True)
+plt.hist(p_multi, bins=50, range=(0,1),density=True)
 plt.xlabel("p-value")
 plt.ylabel("Frequency")
 # plt.title("Metropolis vs Multicluster — p-values")

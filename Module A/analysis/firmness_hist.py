@@ -23,7 +23,6 @@ plt.rcParams.update({
     "legend.handletextpad": 0.2,
     "legend.borderpad": 0.2,
     "text.usetex": True,
-    "text.latex.preamble": r"\usepackage\{babel}[italian]",
 })
 colmap = cmap['winter']
 
