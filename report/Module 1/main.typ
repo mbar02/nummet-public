@@ -90,7 +90,7 @@ Data from Wolff and Metropolis algorithms are compared.
   v(-2pt)
 }
 #let tableFromCSV(filename, column-gutter: auto, cell-inset: auto, ..args) = {
-  let csvfile = csv("example.csv")
+  let csvfile = csv(filename)
   let csvfile-data = csvfile.slice(1).map( row=>{
     row.map( cell=>{
       eval(cell, mode: "markup")
@@ -259,6 +259,9 @@ Then we estimate the values of critical temperature and exponents by the followi
 + for each sample, we compute the magnetic susceptibility, and we identify its peak coordinates via a quadratic fit, as shown in @chi_peak;
 + we repeat 1.~and 2.~varying $L$;
 + we extract critical temperature and exponents via an exponential fit, using @chi_scaling, as shown in @scaling_metropolis and @scaling_wolff.
+To verify stability of fit in 2., we remove some points, then compare the results between the complete and reduced fit by the quantity $b = (beta_"max"^((L)) - beta_"red")\/sigma_beta$.
+We show in @stability_check histograms of $b$, that confirm fit stability.
+
 We consider the following systematic errors:
 - the pseudo-random number generator generates #box("32-bit") integers. We expect this to shift the simulation temperatures by about $2^(-32)$, therefore is completely negligible.
 - To find the maximum of $chi_L$, we sample it around its maximum and perform a fit with a parabolic model; systematic errors arise from neglected higher-power contributions. 
@@ -280,7 +283,7 @@ In order to neglect the latter, we tune simulation parameters so that the statis
 + we make new simulations in which we tune the parameters  to have statistical uncertainty about ten times larger than the cubic term, but ten times smaller than the quadratic one, so that the signal-to-noise ratio is sufficiently high. We estimate the correct number of samples from preliminary sample variance, the `u.p.s.` from the integrated correlation time, and temperature range from $beta_"max"^((L)), chi_"max"^((L))$:
   $ cases(
   display(sigma^2 simeq 9/(2 dot 10^4) (chi_"max"^((L)))^(-1)),
-  display(Delta beta^((L)) = sqrt(3/(5sqrt(2))) thick beta_0^((L)) (chi_"max"^((L)))^(1\/4)\
+  display(Delta beta^((L)) = sqrt(3/(5sqrt(2))) thick beta_0^((L)) (chi_"max"^((L)))^(1\/4) ),
   #h(3em)  approx  0.65 thick beta_0^((L)) (chi_"max"^((L)))^(1\/4)))
   $
   In our case, we sample 10–15 points in that interval, as shown in @chi_peak.
@@ -307,9 +310,15 @@ Furthermore, we point out that the autocorrelation time follows a scaling law, c
 $ tau_"exp" tilde L^z  $
 that defines a new critical exponent $z$.
 In order to characterize it, after finding the critical temperature as explained in @critical_temperature_and_exponents, we perform simulations at $beta_"cr"$ for different $L$s and we extract $tau_"exp"$ via an exponential fit, as shown in @autocorr_fit; finally, we estimate $z$ by means of another exponential fit, as shown in @scaling_tau_metropolis and @scaling_tau_wolff.
+There are however some subtleties to be taken into account for the first exponential fit:
+- autocorrelation gets eventually drowned in noise, hence high lags are to be excluded for the fit;
+- for some simulations (e.g.~ Wolff on small lattices) this happens after very few iterations;
+- small lags do not present the exponential decay of autocorrelation, due to other stochastic matrix eigenvectors' contributions.
+We empirically found the range for autocorrelation values $[0.1,0.4]$ to give (on average) reasonable results: enough points to perform the fit, decent exponential decay and non-noisy curve.
+The result is good enough for the purposes of this investigation, even being rough. 
 
 #figure(
-  image("pics/autocorr-example.svg"),
+  image("pics/autocorr_Metro_hex_030_658_5c7d45.svg"),
   caption: [Exponential decay of autocorrelation; orange curve is the best fit exponential curve.])
   <autocorr_fit>
 
@@ -364,8 +373,6 @@ An interesting conclusion we can extract from this work is the comparison betwee
 Nevertheless, as far as efficiency is concerned, Metropolis shows a much heavier critical slowing down close to critical point, and in general greater correlation times, even though the steps are whole lattice updates
 and `GPU`'s raw computing power is being used.
 
-#colbreak()
-
 = Acknowledgements
 #link(
   "https://github.com/mbar02/nummet-public/raw/refs/heads/master/report/Module%201/pics/2mhh3d0hx1gb1.png",
@@ -392,6 +399,20 @@ and `GPU`'s raw computing power is being used.
   )
   <pre_hex>
 ])
+
+#place(scope: "parent", float: true, auto, [
+  #figure(
+    grid(columns: 3,
+      image("pics/firmness_parity_ratio.svg", width:90%),
+      image("pics/firmness_mean_ratio.svg", width: 90%),
+      image("pics/firmness_max_ratio.svg", width:90%)
+    ),
+    caption: [Stability check of the $beta_"max"^(L)$ fit. Histograms represent the counts of the parameter $b = (Delta beta) /sigma_beta$ when half the points are removed (left), average of $b$ removing one point at a time (middle), max of $b$ removing one point at a time (right). Dashed line is the mean.]
+  )
+  <stability_check>
+])
+
+
 #place(scope: "parent", float: true, auto, [
   #figure(
     grid(columns: 2,
@@ -420,6 +441,15 @@ and `GPU`'s raw computing power is being used.
     supplement: "Tab."
     )
   <tabellariassuntiva>
+])
+#place(scope: "parent", float: true, auto, [
+  #figure(
+    context tableFromCSV("tabella_chisq.csv", cell-inset: (x: 0.8cm)),
+    caption: [Reduced $chi^2$ from the scaling fits to find $gamma$ and $nu$ respectively.],
+    kind: "Table",
+    supplement: "Tab."
+    )
+  <tabellachisq>
 ])
 #place(scope: "parent", float: true, auto, [
   #figure(

@@ -192,7 +192,7 @@ made explicit and discussed in detail in @prob_tuning.
 === Cluster building <cluster_building> \
 The basic idea is to start from a randomly selected site $i^star$, then append neighbors to the cluster with probability
 $P_"add" (Delta x_"neigh")$, which only depends on the kinetic energy contribution $Delta x_"neigh" = x_"neigh"-x_(i^star)$, as we show in the pseudo-code snippet below:
-#pseudocode-list(hooks: .5em, indentation: 0.5em, line-gap: 0.5em)[
+#pseudocode-list(hooks: .5em, indentation: 0.5em, line-gap: 0.4em)[
   + $#raw("cluster[0]") = i^star$ first cluster's site
   + $l = 1$ cluster's length; #h(1em) $k = 0$ counter
   + *while* $k < l$:
@@ -355,11 +355,27 @@ However, single site update seems to stay the best option for its cleanness and 
   #figure(
     grid(columns: 2,
       image("pics/gaps_coupling_metropolis.svg", height: 23em),
-      image("pics/gaps_coupling_wolff.svg", height: 23em),
+      image("pics/gaps_coupling_wolff_old.svg", height: 23em),
       grid.cell(colspan:2, image("pics/gaps_coupling_multicluster.svg", height: 23em, )),
 
     ),
     caption: [Energy gaps varying the coupling parameter $g$, computed with all three different algorithms: single site (top left), single cluster (top right), multi-cluster (bottom). The dotted lines are the gaps computed with the Perturbative-Variational method.]
   )
+
+  #figure(
+    grid(columns: 2,
+      image("pics/gaps_coupling_wolff.svg", height: 23em),
+
+    ),
+    caption: [Energy gaps varying the coupling parameter $g$, using Wolff algorithm after retuning $gamma$.]
+  )
 ]
 )
+#place(scope: "parent", float: true, bottom, [
+  #figure(
+    grid(columns: 2,
+      image("pics/hist_pvals_metropolis_vs_wolff.svg", width: 90%),
+      image("pics/hist_pvals_metropolis_vs_multicluster.svg", width: 90%),
+    ),
+  caption: [Frequency of $p$-values from Kolmogorov-Smirnov test, comparing sample distribution (for all observables) of single cluster (left) and multi-cluster (right) to metropolis.])
+  ])
